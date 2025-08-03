@@ -114,15 +114,6 @@ Thumbs.db
 # Taichi cache
 .taichi_cache/
 
-# Results and outputs
-results/
-output/
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.mp4
-*.avi
 
 # Temporary files
 *.tmp
