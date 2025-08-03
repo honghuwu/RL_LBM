@@ -73,5 +73,7 @@ class LBMEnv(gym.Env):
             return self.lbm.vel.to_numpy()
         return None
 
+    
+
     def close(self):
         pass
