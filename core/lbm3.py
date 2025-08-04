@@ -144,10 +144,7 @@ class lbm_solver:
         self.inlet_velocity = inlet_velocity # 入流速度
         self.cylinder_radius = self.air_c / 2.0  # 使用弦长的一半作为特征长度
 
-        # 力历史记录
-        self.drag_history = []
-        self.lift_history = []
-        self.time_history = []
+
         
 
         # IBM 参数

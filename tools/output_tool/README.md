@@ -34,7 +34,7 @@
 ### 新的模块结构
 
 ```
-tools/output/
+tools/output_tool/
 ├── __init__.py          # 模块初始化
 ├── output.py            # 核心输出处理器
 └── README.md           # 说明文档
@@ -68,7 +68,7 @@ def create_output_processor(solver):
 ### 在主求解器中使用
 
 ```python
-from tools.output.output import create_output_processor
+from tools.output_tool.output import create_output_processor
 
 class lbm_solver:
     def __init__(self, ...):
@@ -87,7 +87,7 @@ class lbm_solver:
 ### 直接使用输出处理器
 
 ```python
-from tools.output.output import LBMOutputProcessor
+from tools.output_tool.output import LBMOutputProcessor
 
 # 创建处理器
 processor = LBMOutputProcessor(solver)

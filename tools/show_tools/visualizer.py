@@ -209,6 +209,29 @@ class LBMVisualizer:
             y = (pt[1] + self.ny + self.separator_height) / self.combined_height  # 调整到下半部分
             gui.circle((x, y), radius=1, color=color)
 
+    def draw_controller_points(self, gui, controller_pos, color=0xFF0000):
+        """
+        在GUI上绘制控制器点
+        
+        Args:
+            gui: Taichi GUI对象
+            controller_pos: 控制器点位置数组
+            color: 控制器点颜色
+        """
+        controller_pts = controller_pos.to_numpy()
+        
+        for pt in controller_pts:
+            x = pt[0] / self.nx
+            y = pt[1] / self.combined_height  # 调整到上半部分
+            gui.circle((x, y), radius=1, color=color)
+
+        # 下半部分（速度场）的控制器点
+        for pt in controller_pts:
+            x = pt[0] / self.nx
+            y = (pt[1] + self.ny + self.separator_height) / self.combined_height  # 调整到下半部分
+            gui.circle((x, y), radius=1, color=color)
+
+
     def draw_info_text(self, gui, step, reynolds, cd, cl):
         """
         在GUI上绘制信息文本

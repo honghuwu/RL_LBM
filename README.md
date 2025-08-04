@@ -18,7 +18,7 @@ MyCode/
 │   ├── obstacles_generate/  # 障碍物生成工具
 │   │   ├── column_generate.py    # 圆柱体生成
 │   │   └── naca_genarate.py      # NACA翼型生成
-│   ├── output/             # 输出处理工具
+│   ├── output_tool/        # 输出处理工具
 │   │   └── output.py       # 结果输出和可视化
 │   └── show_tools/         # 可视化工具
 │       └── visualizer.py   # 可视化器

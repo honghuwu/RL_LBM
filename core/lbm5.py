@@ -1,55 +1,58 @@
 """
 =============================================================================
-LBM求解器 - 输出处理版本 (lbm4.py)
+LBM求解器 - 智能控制版本 (lbm5.py)
 =============================================================================
 
 文件描述:
-    基于Taichi的格子玻尔兹曼方法(LBM)流体求解器的输出处理版本。在v3.0基础上
-    集成了输出处理器模块，实现了数据输出的标准化和模块化管理。
+    基于Taichi的格子玻尔兹曼方法(LBM)流体求解器的智能控制版本。在v4.0基础上
+    新增了强化学习控制器功能，实现了主动流动控制，为智能流体控制奠定基础。
 
 主要功能:
     - D2Q9格子玻尔兹曼方法求解不可压缩流体
     - 浸没边界法处理复杂几何边界(NACA翼型)
+    - 智能控制器系统(可移动圆柱控制器)
     - 模块化可视化系统
-    - 标准化输出处理器
     - Taichi GUI实时可视化
     - 升阻力系数计算和监控
-    - 数据输出和保存功能
+    - 强化学习接口
 
 核心算法:
     1. 优化的LBM碰撞-迁移步骤
     2. 改进的IBM力计算方法(密度加权)
-    3. 简化的体积力项处理
-    4. 周期性边界条件
+    3. 智能控制器力计算和传播
+    4. 简化的体积力项处理
+    5. 周期性边界条件
 
 技术特点:
     - 使用Taichi GPU加速计算
     - 模块化可视化架构(show_tools.LBMVisualizer)
-    - 标准化输出处理器(output_tool.LBMOutputProcessor)
+    - 面向对象的控制器设计(movable_column.controller)
     - 高性能Taichi GUI显示
     - 自定义颜色映射
     - 上下双场布局显示
-    - 数据输出管理
+    - 控制器可视化
 
-输出处理新特性:
-    - 模块化输出处理器
-    - 标准化数据输出接口
-    - 可配置输出格式
-    - 数据保存和管理
-    - 输出处理器工厂模式
-    - 灵活的输出配置
+智能控制新特性:
+    - 可移动圆柱控制器
+    - 控制器速度和密度插值
+    - 控制器力计算和传播
+    - 动态控制器位置更新
+    - 强化学习控制接口
+    - 控制器可视化显示
 
-版本更新内容 (v4.0):
-    - 新增: 输出处理器模块集成
-    - 新增: output_tool.LBMOutputProcessor
-    - 新增: 标准化数据输出接口
-    - 新增: 可配置输出格式
-    - 改进: 数据管理和保存
-    - 优化: 模块化架构设计
+版本更新内容 (v5.0):
+    - 新增: 智能控制器系统
+    - 新增: movable_column.controller类集成
+    - 新增: 控制器IBM力计算
+    - 新增: 控制器可视化
+    - 新增: move_controller()方法
+    - 改进: control()函数实现
+    - 优化: 控制器密度插值算法
 
 依赖模块:
     - show_tools.LBMVisualizer: 可视化模块
     - obstacles_generate.naca_genarate: 翼型生成
+    - control_tools.movable_column: 可移动控制器
     - output_tool.output: 输出处理器
     - taichi: GPU加速计算框架
 
@@ -57,16 +60,17 @@ LBM求解器 - 输出处理版本 (lbm4.py)
     - v1.0: 基础LBM求解器
     - v2.0: 浸没边界法集成
     - v3.0: 模块化可视化
-    - v4.0: 输出处理器集成 (当前版本)
+    - v4.0: 输出处理器集成
+    - v5.0: 智能控制器系统 (当前版本)
 
 版本信息:
-    - 版本: v4.0 (输出处理版本)
-    - 基于: lbm3.py v3.0
+    - 版本: v5.0 (智能控制版本)
+    - 基于: lbm4.py v4.0
     - 创建日期: 2024
-    - 可视化: 模块化Taichi GUI
+    - 可视化: 模块化Taichi GUI + 控制器显示
     - 边界条件: 周期性边界
-    - 架构: 模块化设计 + 输出处理
-    - 输出: 标准化输出处理器
+    - 架构: 模块化设计 + 智能控制
+    - 控制器: 可移动圆柱控制器
 
 作者: LBM项目组
 =============================================================================
@@ -85,6 +89,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from tools.obstacles_generate.naca_genarate import obstacles_generate
 from tools.show_tools import LBMVisualizer
 from tools.output_tool.output import create_output_processor
+from tools.control_tools.movable_column import controller
 import taichi as ti
 import taichi.math as tm
 from taichi.types import i32
@@ -155,16 +160,39 @@ class lbm_solver:
 
         # 流动参数
         self.inlet_velocity = inlet_velocity # 入流速度
-        self.cylinder_radius = self.air_c / 2.0  # 使用弦长的一半作为特征长度
-
 
         # IBM 参数
         # self.ibm_alpha = 1.2 
         self.it = ti.field(dtype=ti.i32, shape=())
         self.it[None] = 0  # 初始化为0
         
-        # 输出处理器
+        # 强化学习输入处理器
         self.output_processor = None
+
+        #强化学习控制器
+        self.controller_radius = 5
+        
+        # 创建controller对象
+        self.controller_obj = controller(
+            controller_radius=self.controller_radius,
+            pos_x=self.air_o[0],
+            pos_y=self.air_o[1]
+        )
+
+        self.controller_pts_num = self.controller_obj.colume_num()
+
+        self.controller_pos = ti.Vector.field(2, float, shape=self.controller_pts_num)
+        self.controller_pos.from_numpy(self.controller_obj.column_create())
+
+        self.controller_vel = ti.Vector.field(2, float, shape=self.controller_pts_num)
+        self.controller_vel.fill(0)
+
+        self.controller_rho = ti.field(float, shape=self.controller_pts_num)
+
+        self.controller_force = ti.Vector.field(2, float, shape=self.controller_pts_num)
+        self.controller_interp_vel = ti.Vector.field(2, float, shape=self.controller_pts_num)
+
+
     @ti.func
     def f_eq(self, i, j):
         vel_ij = self.vel[i, j]
@@ -225,6 +253,25 @@ class lbm_solver:
             self.boundary_rho[k] = rho / num
             self.interp_vel[k] = interp_v
 
+        # 控制器速度插值
+        for k in self.controller_pos:
+            lag_pos = self.controller_pos[k]
+            ix_base, iy_base = int(lag_pos.x), int(lag_pos.y)
+            interp_v = tm.vec2(0.0, 0.0)
+            rho = 0.0
+            num = 0
+            for i_offset in range(-1, 3):
+                for j_offset in range(-1, 3):
+                    i, j = ix_base + i_offset, iy_base + j_offset
+                    if 0 <= i < self.nx and 0 <= j < self.ny:
+                        euler_pos = tm.vec2(float(i), float(j))
+                        weight = self.discrete_delta(lag_pos - euler_pos)
+                        interp_v += self.vel[i, j] * weight
+                        rho += self.rho[i, j] * weight
+                        num += 1
+            self.controller_interp_vel[k] = interp_v
+            self.controller_rho[k] = rho
+
     @ti.kernel
     def calculate_boundary_force(self):
         for k in self.boundary_pos:
@@ -234,6 +281,14 @@ class lbm_solver:
             force = 2 * rho_k * (self.boundary_vel[k] - self.interp_vel[k]) / self.dt
             self.boundary_force[k] = force
 
+        # 控制器力计算
+        for k in self.controller_pos:
+            # 使用插值得到的控制器点密度
+            rho_k = self.controller_rho[k]
+            # 计算控制器点力 (期望速度 - 插值速度)
+            force = 2 * rho_k * (self.controller_vel[k] - self.controller_interp_vel[k]) / self.dt
+            self.controller_force[k] = force
+
     @ti.kernel
     def spread_force(self):
         self.euler_force.fill(0)
@@ -242,6 +297,19 @@ class lbm_solver:
             lag_force = self.boundary_force[k]
             ix_base, iy_base = int(lag_pos.x), int(lag_pos.y)
 
+            for i_offset in range(-1, 3):
+                for j_offset in range(-1, 3):
+                    i, j = ix_base + i_offset, iy_base + j_offset
+                    if 0 <= i < self.nx and 0 <= j < self.ny:
+                        euler_pos = tm.vec2(float(i), float(j))
+                        weight = self.discrete_delta(lag_pos - euler_pos)
+                        ti.atomic_add(self.euler_force[i, j], lag_force * weight)
+
+        # 控制器力传播
+        for k in self.controller_pos:
+            lag_pos = self.controller_pos[k]
+            lag_force = self.controller_force[k]
+            ix_base, iy_base = int(lag_pos.x), int(lag_pos.y)
             for i_offset in range(-1, 3):
                 for j_offset in range(-1, 3):
                     i, j = ix_base + i_offset, iy_base + j_offset
@@ -264,6 +332,8 @@ class lbm_solver:
             term2 = 9*(tm.dot(tm.vec2(self.e[k, 0], self.e[k, 1]), self.vel[i,j])) * tm.vec2(self.e[k, 0], self.e[k, 1]) 
             f[k] = (1-0.5*self.inv_tau)*self.w[k]*tm.dot(term1 + term2, self.euler_force[i,j])
         return f
+
+
 
     @ti.kernel
     def collision(self):
@@ -435,6 +505,8 @@ class lbm_solver:
             
             # 绘制边界点
             visualizer.draw_boundary_points(gui, self.boundary_pos)
+            # 绘制控制器点
+            visualizer.draw_controller_points(gui, self.controller_pos)
             
             # 显示信息文本
             drag_lift_coeffs = self.calculate_drag_lift()
@@ -456,11 +528,22 @@ class lbm_solver:
 
 
 
-    def control(self):
+    def control(self, control_velocity=None):
         """
-        控制函数 - 预留的控制接口
+        控制函数 - 设置控制器的期望速度
+        
+        参数:
+        control_velocity: 控制速度，可以是标量(只设置x方向)或二元组(x,y方向)
         """
-        pass
+        if control_velocity is not None:
+            if isinstance(control_velocity, (int, float)):
+                # 如果是标量，只设置x方向速度
+                self.controller_vel.fill([control_velocity, 0.0])
+            elif len(control_velocity) == 2:
+                # 如果是二元组，设置x,y方向速度
+                self.controller_vel.fill([control_velocity[0], control_velocity[1]])
+            else:
+                raise ValueError("control_velocity应该是标量或长度为2的序列")
         
 
 
@@ -476,6 +559,8 @@ if __name__ == '__main__':
         air_para=[0, 0, 12.0, -20.0],
         air_o=[100.0, 100.0],
     )
-    #lbm.show()
-    lbm.solver(steps=1000)
+    
+
+    lbm.show()
+    # lbm.solver(steps=1000)
     print(lbm.output())
