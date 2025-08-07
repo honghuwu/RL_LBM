@@ -528,22 +528,9 @@ class lbm_solver:
 
 
 
-    def control(self, control_velocity=None):
-        """
-        控制函数 - 设置控制器的期望速度
+    def control(self, choice):
+        self.controller_vel.from_numpy(self.controller_obj.control(choice))
         
-        参数:
-        control_velocity: 控制速度，可以是标量(只设置x方向)或二元组(x,y方向)
-        """
-        if control_velocity is not None:
-            if isinstance(control_velocity, (int, float)):
-                # 如果是标量，只设置x方向速度
-                self.controller_vel.fill([control_velocity, 0.0])
-            elif len(control_velocity) == 2:
-                # 如果是二元组，设置x,y方向速度
-                self.controller_vel.fill([control_velocity[0], control_velocity[1]])
-            else:
-                raise ValueError("control_velocity应该是标量或长度为2的序列")
         
 
 
@@ -561,6 +548,9 @@ if __name__ == '__main__':
     )
     
 
-    lbm.show()
-    # lbm.solver(steps=1000)
-    print(lbm.output())
+    # lbm.show()
+    lbm.solver(steps=1000)
+    a = lbm.output()
+    #将a保存csv文件
+    np.savetxt('lbm_output.csv', a, delimiter=',')
+

@@ -273,18 +273,19 @@ class LBMOutputProcessor:
                 u_val, v_val,   # 速度分量
                 vort_val,       # 涡度
             ])
+        return np.array(output_data)
+
+        # # 转换为numpy数组并展平
+        # output_array = np.array(output_data)
+        # flattened_array = output_array.flatten()
         
-        # 转换为numpy数组并展平
-        output_array = np.array(output_data)
-        flattened_array = output_array.flatten()
+        # print(f"已选取 {len(sampling_points)} 个采样点")
+        # print(f"返回展平数组，长度: {len(flattened_array)}")
+        # print(f"数据范围: u=[{output_array[:, 2].min():.4f}, {output_array[:, 2].max():.4f}], "
+        #       f"v=[{output_array[:, 3].min():.4f}, {output_array[:, 3].max():.4f}], "
+        #       f"vorticity=[{output_array[:, 4].min():.4f}, {output_array[:, 4].max():.4f}]")
         
-        print(f"已选取 {len(sampling_points)} 个采样点")
-        print(f"返回展平数组，长度: {len(flattened_array)}")
-        print(f"数据范围: u=[{output_array[:, 2].min():.4f}, {output_array[:, 2].max():.4f}], "
-              f"v=[{output_array[:, 3].min():.4f}, {output_array[:, 3].max():.4f}], "
-              f"vorticity=[{output_array[:, 4].min():.4f}, {output_array[:, 4].max():.4f}]")
-        
-        return flattened_array
+        # return flattened_array
 
 
 def create_output_processor(solver):

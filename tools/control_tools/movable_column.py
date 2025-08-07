@@ -4,10 +4,13 @@ import matplotlib.pyplot as plt
 class controller:
     def __init__(self,controller_radius,pos_x,pos_y):
         self.controller_radius = controller_radius
-        self.x = pos_x
-        self.y = pos_y
+        self.x_center = pos_x
+        self.y_center = pos_y
         self.num_points = 50
-
+        self.x = None
+        self.y = None
+        self.x_vel = None
+        self.y_vel = none 
 
     def column_create(self):
         """
@@ -35,22 +38,29 @@ class controller:
         theta = np.linspace(0, 2 * np.pi, self.num_points, endpoint=False)
         
         # 计算圆周上的点坐标
-        x_coords = self.x + self.controller_radius * np.cos(theta) - self.controller_radius
-        y_coords = self.y + self.controller_radius * np.sin(theta)
+        x_coords = self.x_center + self.controller_radius * np.cos(theta) - self.controller_radius
+        y_coords = self.y_center + self.controller_radius * np.sin(theta)
+        self.x = x_coords
+        self.y = y_coords
 
         #返回点的 n*2 numpy数组
         return np.column_stack((x_coords, y_coords))
         
 
     def colume_num(self):
+
         return self.num_points
 
 
     def control(self,choice):
-
+        w = 0.1 * ( choice - 9 ) / 10 / self.controller_radius
+        theta = np.linspace(0, 2 * np.pi, self.num_points, endpoint=False)
+        self.x_vel =  - w * self.controller_radius * np.sin(theta)
+        self.y_vel = w * self.controller_radius * np.cos(theta)
 
         #返回一组速度
-        pass
+        return np.column_stack((self.x_vel,self.y_vel))
+
 
 
 
