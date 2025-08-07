@@ -413,6 +413,12 @@ class lbm_solver:
             # 计算升力和阻力
             drag += force.dot(tm.vec2(1.0, 0.0))
             lift += force.dot(tm.vec2(0.0, 1.0))
+        
+        for k in self.controller_pos:
+            force = -self.controller_force[k]
+            # 计算升力和阻力
+            drag += force.dot(tm.vec2(1.0, 0.0))
+            lift += force.dot(tm.vec2(0.0, 1.0))
 
         # 计算升力系数和阻力系数
         rho_ref = 1.0  # 参考密度

@@ -53,7 +53,7 @@ class controller:
 
 
     def control(self,choice):
-        w = 0.1 * ( choice - 9 ) / 10 / self.controller_radius
+        w = 0.1 *  choice  / 10 / self.controller_radius
         theta = np.linspace(0, 2 * np.pi, self.num_points, endpoint=False)
         self.x_vel =  - w * self.controller_radius * np.sin(theta)
         self.y_vel = w * self.controller_radius * np.cos(theta)
