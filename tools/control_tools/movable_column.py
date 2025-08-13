@@ -10,7 +10,7 @@ class controller:
         self.x = None
         self.y = None
         self.x_vel = None
-        self.y_vel = none 
+        self.y_vel = None 
 
     def column_create(self):
         """
@@ -52,7 +52,7 @@ class controller:
         return self.num_points
 
 
-    def control(self,choice):
+    def control(self,choice):  #choice -9  -  +9
         w = 0.1 *  choice  / 10 / self.controller_radius
         theta = np.linspace(0, 2 * np.pi, self.num_points, endpoint=False)
         self.x_vel =  - w * self.controller_radius * np.sin(theta)

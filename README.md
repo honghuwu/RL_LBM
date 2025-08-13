@@ -118,3 +118,11 @@ solver.output()
 ## 联系方式
 
 如有问题或建议，请通过GitHub Issues联系。
+
+
+
+
+U-net Resnet GoogleNet
+LSTM
+
+RL算法   PPO  PPO—plus cl cd cd/cl  

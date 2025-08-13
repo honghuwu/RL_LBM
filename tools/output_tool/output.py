@@ -179,7 +179,7 @@ class LBMOutputProcessor:
         # 将列表转换为元组进行去重，然后再转回列表
         valid_points = [list(point) for point in set(tuple(point) for point in valid_points)]
 
-        print(len(valid_points))
+        # print(len(valid_points))
 
         return valid_points
 
@@ -273,7 +273,7 @@ class LBMOutputProcessor:
                 u_val, v_val,   # 速度分量
                 vort_val,       # 涡度
             ])
-        return np.array(output_data)
+        return np.array(output_data) #642 * 5
 
         # # 转换为numpy数组并展平
         # output_array = np.array(output_data)

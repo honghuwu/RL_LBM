@@ -554,9 +554,9 @@ if __name__ == '__main__':
     )
     
 
-    # lbm.show()
-    lbm.solver(steps=1000)
-    a = lbm.output()
-    #将a保存csv文件
-    np.savetxt('lbm_output.csv', a, delimiter=',')
+    lbm.show()
+    # lbm.solver(steps=1000)
+    # a = lbm.output()
+    # #将a保存csv文件
+    # np.savetxt('lbm_output.csv', a, delimiter=',')
 
