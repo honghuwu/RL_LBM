@@ -11,10 +11,6 @@ from stable_baselines3.common.env_util import make_vec_env
 from gymnasium.wrappers import TimeLimit
 from env_lbm import LBMEnv
 
-"""
-训练脚本：使用 PPO 强化学习算法对 lbm_solver 控制器速度进行优化
-目标：学会控制 (vx, vy) 提升升阻比 cl / (cd + ε)
-"""
 
 class ProgressCallback(BaseCallback):
     """
@@ -134,23 +130,27 @@ class ProgressCallback(BaseCallback):
         plt.show()
 
 def main():
-    print("🔧 初始化 LBM 强化学习训练环境...")
-    
-    # 清理GPU内存
+        
     if torch.cuda.is_available():
+        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+        device = torch.device('cuda')
+        print(f"使用GPU: {torch.cuda.get_device_name()}")
         torch.cuda.empty_cache()
         gc.collect()
-        print("🧹 GPU内存已清理")
+    else:
+        device = torch.device('cpu')
     
+
     # 创建环境实例，设置episode最大长度
-    base_env = LBMEnv(config={"max_episode_steps": 200})
-    env = TimeLimit(base_env, max_episode_steps=200)  # 确保episode在200步后结束
-    print("✅ LBM 环境创建成功 (最大episode长度: 200步)")
+    base_env = LBMEnv(config={"max_episode_steps": 2000})
+
+    env = TimeLimit(base_env, max_episode_steps=2000)  
+
 
     # 配置日志记录器
     new_logger = configure("./models/logs/", ["stdout", "csv", "tensorboard"])
     
-    # 创建 PPO 模型 (降低参数以减少GPU内存使用)
+    # 创建 PPO 模型 
     model = PPO(
         policy="MlpPolicy",          # 使用多层感知机策略网络
         env=env,                     # 使用自定义的LBM环境
@@ -160,7 +160,7 @@ def main():
         n_steps=1024,                # 每次更新的步数
         batch_size=32,               # 批次大小
         n_epochs=5,                  # 每次更新的轮数
-        gamma=0.99,                  # 折扣因子
+        gamma=0.999,                  # 折扣因子
         gae_lambda=0.95,             # GAE lambda
         clip_range=0.2,              # PPO clip range
         ent_coef=0.01,               # 熵系数
@@ -176,7 +176,7 @@ def main():
         env,
         best_model_save_path="./models/best_model/",
         log_path="./models/eval_log/",
-        eval_freq=5000,
+        eval_freq=2000,
         deterministic=True,
         render=False,
         verbose=1
@@ -187,14 +187,11 @@ def main():
     
     print("开始训练...")
 
-    # 训练智能体
-
     model.learn(
-        total_timesteps=40000,      # 降低总训练步数以减少GPU压力
+        total_timesteps=20000,      # 总训练步数
         callback=callbacks,          # 回调函数列表
         progress_bar=True           # 显示进度条
     )
-
 
     # 保存最终模型
     model.save("./models/final_model")

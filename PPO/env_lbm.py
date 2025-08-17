@@ -27,7 +27,7 @@ class LBMEnv(gym.Env):
         self.render_interval = config.get("render_interval", 10)  # 每隔多少 step 渲染一次
         
         # Episode 长度限制
-        self.max_episode_steps = config.get("max_episode_steps", 200)  # 默认最大200步
+        self.max_episode_steps = config.get("max_episode_steps", 2000)
 
         # 初始化 LBM 求解器
         self.lbm = lbm_solver(
@@ -46,9 +46,9 @@ class LBMEnv(gym.Env):
 
         # 动作空间
         self.action_space = spaces.Box(
-            low=np.array([-15.0], dtype=np.float32),
-            high=np.array([15.0], dtype=np.float32),
-            dtype=np.float32
+            low=np.array([-10], dtype=np.int8),
+            high=np.array([10], dtype=np.int8),
+            dtype=np.int8
         )
 
 
