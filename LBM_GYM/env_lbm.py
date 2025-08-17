@@ -53,7 +53,7 @@ class LBMEnv(gym.Env):
 
 
         # 观测空间
-        #self.lbm.init()
+        self.lbm.init()
         self.observation_space = spaces.Box(
                     low=-np.inf, high=np.inf, shape=(642, 5), dtype=np.float32
 
@@ -63,43 +63,54 @@ class LBMEnv(gym.Env):
         self.step_counter = 0
 
         self.reward = 0.0
+        
+        # 初始化标志
+        self.has_been_initialized = False
+
+    # def reset(self, seed=None, options=None):
+    #     super().reset(seed=seed)
+    #     self.lbm.reset()
+
+    #     # 这可以避免在刚初始化后立即调用output()时的CUDA内存访问问题
+    #     for _ in range(5):
+    #         self.lbm.step()
+        
+    #     self.step_counter = 0
+    #     obs = self.lbm.output().astype(np.float32)
+    #     info = {}
+    #     return obs, info
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.lbm.init()
+        self.lbm.reset()
+
+        # 这可以避免在刚初始化后立即调用output()时的CUDA内存访问问题
+        for _ in range(5):
+            self.lbm.step()
+        
         self.step_counter = 0
+        self.has_been_initialized = True
         obs = self.lbm.output().astype(np.float32)
         info = {}
         return obs, info
 
-    # def reset(self, seed=None, options=None):
-    #     super().reset(seed=seed)
-    #     # 只有在第一次调用或仿真崩溃后才真正重置
-    #     if not self.has_been_initialized or self.lbm_solver.is_unstable:
-    #         print("Performing a REAL reset of the LBM simulation.")
-    #         self.has_been_initialized = True
-        
-    #     # 对于常规的"episode"结束，我们不重置流场
-    #     # 只是返回当前流场的状态
-    #     state = self.lbm_solver.get_state()
-    #     info = {} # 重置时info通常为空
-    #     return state, info
-
 
     def step(self, action):
-        control_val = float(np.clip(action[0], -15.0, 15.0))
+
+        control_val = float(np.clip(action[0], -10.0, 10.0))
         self.lbm.control(control_val)
 
         for _ in range(10):
             self.lbm.step()
 
         obs = self.lbm.output().astype(np.float32)
-        # 获取升阻力数据并转换为 numpy 数组
-        drag_lift_vec = self.lbm.calculate_drag_lift()
-        drag_lift = np.array([drag_lift_vec[0], drag_lift_vec[1], drag_lift_vec[2], drag_lift_vec[3]])
+        
+        drag_lift = self.lbm.get_reward()
+
         cd = drag_lift[2]
         cl = drag_lift[3]
-        reward = cl - 0.5 * cd
+
+        reward = cl / cd
 
         self.step_counter += 1
 
@@ -109,15 +120,17 @@ class LBMEnv(gym.Env):
 
         # 检查episode是否应该结束
         terminated = False
+
         truncated = self.step_counter >= self.max_episode_steps  # 达到最大步数时截断
+
         info = {
             "Drag": drag_lift[0],
             "Lift": drag_lift[1],
             "CD": cd,
             "CL": cl
         }
-        return obs, reward, terminated, truncated, info
 
+        return obs, reward, terminated, truncated, info
 
     def render(self, mode='human'):
         if self.gui is None:
@@ -152,12 +165,6 @@ class LBMEnv(gym.Env):
             cl=cl
         )
 
-        # 事件轮询
-        for e in self.gui.get_events(ti.GUI.PRESS):
-            if e.key == ti.GUI.ESCAPE:
-                self.close()
-                exit()
-
         self.gui.show()
 
     def close(self):
@@ -177,5 +184,10 @@ if __name__ == '__main__':
         print(f"实际渲染间隔: {env.render_interval}", flush=True) 
         time.sleep(0.05)  # 给 GUI 时间刷新
     env.close()
+    #测试reset
+    obs, info = env.reset()
+    print(obs)
+    print(info)
+
 
 

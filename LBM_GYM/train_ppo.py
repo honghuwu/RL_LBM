@@ -2,6 +2,8 @@ import gymnasium as gym
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+import torch
+import gc
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.logger import configure
@@ -55,13 +57,12 @@ class ProgressCallback(BaseCallback):
                 # 尝试获取环境信息
                 cd, cl = 0, 0
                 try:
-                    if hasattr(self.training_env, 'get_attr'):
-                        env_info = self.training_env.get_attr('last_info')[0]
-                        if env_info and isinstance(env_info, dict):
-                            cd = env_info.get('CD', 0)
-                            cl = env_info.get('CL', 0)
-                            self.drag_coefficients.append(cd)
-                            self.lift_coefficients.append(cl)
+                    # 从最近的episode信息中获取CD和CL
+                    if len(recent_episodes) > 0 and 'CD' in recent_episodes[-1]:
+                        cd = recent_episodes[-1].get('CD', 0)
+                        cl = recent_episodes[-1].get('CL', 0)
+                        self.drag_coefficients.append(cd)
+                        self.lift_coefficients.append(cl)
                 except:
                     pass
                 
@@ -135,6 +136,12 @@ class ProgressCallback(BaseCallback):
 def main():
     print("🔧 初始化 LBM 强化学习训练环境...")
     
+    # 清理GPU内存
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        gc.collect()
+        print("🧹 GPU内存已清理")
+    
     # 创建环境实例，设置episode最大长度
     base_env = LBMEnv(config={"max_episode_steps": 200})
     env = TimeLimit(base_env, max_episode_steps=200)  # 确保episode在200步后结束
@@ -143,16 +150,16 @@ def main():
     # 配置日志记录器
     new_logger = configure("./models/logs/", ["stdout", "csv", "tensorboard"])
     
-    # 创建 PPO 模型
+    # 创建 PPO 模型 (降低参数以减少GPU内存使用)
     model = PPO(
         policy="MlpPolicy",          # 使用多层感知机策略网络
         env=env,                     # 使用自定义的LBM环境
         verbose=1,                   # 输出训练信息
         tensorboard_log="./ppo_lbm_tensorboard/",  # Tensorboard 日志目录
         learning_rate=3e-4,          # 学习率
-        n_steps=2048,                # 每次更新的步数
-        batch_size=64,               # 批次大小
-        n_epochs=10,                 # 每次更新的轮数
+        n_steps=1024,                # 每次更新的步数
+        batch_size=32,               # 批次大小
+        n_epochs=5,                  # 每次更新的轮数
         gamma=0.99,                  # 折扣因子
         gae_lambda=0.95,             # GAE lambda
         clip_range=0.2,              # PPO clip range
@@ -161,7 +168,6 @@ def main():
     
     # 设置自定义日志记录器
     model.set_logger(new_logger)
-    print("✅ PPO 模型创建成功")
 
     # 创建回调函数
     progress_callback = ProgressCallback(check_freq=1000, verbose=1)
@@ -179,31 +185,20 @@ def main():
     # 组合回调函数
     callbacks = [progress_callback, eval_callback]
     
-    print("🎯 开始训练...")
-    print(f"📋 训练参数:")
-    print(f"   - 总步数: 100,000")
-    print(f"   - 学习率: 3e-4")
-    print(f"   - 批次大小: 64")
-    print(f"   - 评估频率: 每 5,000 步")
-    print(f"   - 进度更新: 每 1,000 步")
-    print("=" * 60)
+    print("开始训练...")
 
     # 训练智能体
+
     model.learn(
-        total_timesteps=50000,      # 总训练步数
+        total_timesteps=40000,      # 降低总训练步数以减少GPU压力
         callback=callbacks,          # 回调函数列表
         progress_bar=True           # 显示进度条
     )
 
+
     # 保存最终模型
     model.save("./models/final_model")
-    print("\n✅ 模型训练完成，已保存至 ./models/final_model")
-    
-    # 启动 TensorBoard 提示
-    print("\n📊 查看详细训练日志:")
-    print("   1. TensorBoard: tensorboard --logdir=./ppo_lbm_tensorboard")
-    print("   2. 训练曲线: ./models/training_curves.png")
-    print("   3. CSV 日志: ./models/logs/progress.csv")
+    print("\n模型训练完成，已保存至 ./models/final_model")
 
 if __name__ == '__main__':
     main()

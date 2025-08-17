@@ -165,6 +165,12 @@ class lbm_solver:
         # self.ibm_alpha = 1.2 
         self.it = ti.field(dtype=ti.i32, shape=())
         self.it[None] = 0  # 初始化为0
+        self.drag = 0
+        self.lift = 0
+        self.cd = 0
+        self.cl = 0
+
+
         
         # 强化学习输入处理器
         self.output_processor = None
@@ -441,6 +447,13 @@ class lbm_solver:
         self.streaming()
         self.update_macro_vars()
         self.apply_bc()
+        
+        # 更新升阻力系数
+        drag_lift_coeffs = self.calculate_drag_lift()
+        self.drag = drag_lift_coeffs.x
+        self.lift = drag_lift_coeffs.y
+        self.cd = drag_lift_coeffs.z
+        self.cl = drag_lift_coeffs.w
 
     def solver(self, steps=10000):
         """ 运行指定步数的LBM求解 """
@@ -454,17 +467,17 @@ class lbm_solver:
             current_time = self.it[None] * self.dt
             
             if self.it[None] % 5 == 0:  
-                drag_lift_coeffs = self.calculate_drag_lift()
-                drag = drag_lift_coeffs.x
-                lift = drag_lift_coeffs.y
+                # 直接使用已计算的值，避免重复计算
+                drag = self.drag
+                lift = self.lift
 
 
             if self.it[None] % 100 == 0:
-                drag_lift_coeffs = self.calculate_drag_lift()
-                drag = drag_lift_coeffs.x
-                lift = drag_lift_coeffs.y
-                cd = drag_lift_coeffs.z  # 阻力系数
-                cl = drag_lift_coeffs.w  # 升力系数
+                # 直接使用已计算的值，避免重复计算
+                drag = self.drag
+                lift = self.lift
+                cd = self.cd  # 阻力系数
+                cl = self.cl  # 升力系数
                 
                 
                 print(f"迭代步数: {self.it[None]}, 阻力: {drag:.6f}, 升力: {lift:.6f}, "
@@ -488,17 +501,17 @@ class lbm_solver:
                 
                 # 记录力的历史
                 if self.it[None] % 10 == 0:
-                    drag_lift_coeffs = self.calculate_drag_lift()
-                    drag = drag_lift_coeffs.x
-                    lift = drag_lift_coeffs.y
+                    # 直接使用已计算的值，避免重复计算
+                    drag = self.drag
+                    lift = self.lift
             
             # 每100步输出一次信息
             if self.it[None] % 100 == 0:
-                drag_lift_coeffs = self.calculate_drag_lift()
-                drag = drag_lift_coeffs.x
-                lift = drag_lift_coeffs.y
-                cd = drag_lift_coeffs.z  # 阻力系数
-                cl = drag_lift_coeffs.w  # 升力系数
+                # 直接使用已计算的值，避免重复计算
+                drag = self.drag
+                lift = self.lift
+                cd = self.cd  # 阻力系数
+                cl = self.cl  # 升力系数
 
                 print(f"步数: {self.it[None]}, 阻力: {drag:.6f}, 升力: {lift:.6f}, "
                         f"C_D: {cd:.4f}, C_L: {cl:.4f}")
@@ -515,9 +528,8 @@ class lbm_solver:
             visualizer.draw_controller_points(gui, self.controller_pos)
             
             # 显示信息文本
-            drag_lift_coeffs = self.calculate_drag_lift()
-            cd = drag_lift_coeffs.z  # 阻力系数
-            cl = drag_lift_coeffs.w  # 升力系数
+            cd = self.cd  # 阻力系数
+            cl = self.cl  # 升力系数
             
             visualizer.draw_info_text(gui, self.it[None], self.Red, cd, cl)
             
@@ -538,7 +550,64 @@ class lbm_solver:
         self.controller_vel.from_numpy(self.controller_obj.control(choice))
         
         
+    def get_reward(self):
+        """获取当前状态"""
+        # 合并速度场和其他相关变量
+        state = np.array([
+            self.drag,
+            self.lift,
+            self.cd,
+            self.cl,
+        ])
+        return state
 
+    @ti.kernel
+    def init_deterministic(self):
+        """确定性初始化，不使用随机数"""
+        self.vel.fill(0)
+        self.rho.fill(1.0)
+        # 添加固定的小扰动而不是随机扰动
+        for i, j in self.vel:
+            # 使用确定性扰动模式
+            perturbation = 1e-4 * ti.sin(0.1 * i) * ti.cos(0.1 * j)
+            self.vel[i, j].y += perturbation
+        for i, j in self.rho:
+            self.f_old[i, j] = self.f_eq(i, j)
+            self.f_new[i, j] = self.f_eq(i, j)
+    
+    def reset(self):    #将环境重置,所有变量回复原来的样子
+        """重置LBM求解器到初始状态"""
+        # 重置迭代计数器
+        self.it[None] = 0
+        
+        # 重置升阻力系数
+        self.drag = 0
+        self.lift = 0
+        self.cd = 0
+        self.cl = 0
+        
+        # 重置流场状态 (vel, rho, f_old, f_new) - 使用确定性初始化
+        self.init_deterministic()
+        
+        # 重置欧拉力场
+        self.euler_force.fill(0)
+        
+        # 重置边界相关变量
+        self.boundary_vel.fill(0)  # 静止翼型，期望速度为0
+        self.boundary_force.fill(0)
+        self.interp_vel.fill(0)
+        self.boundary_rho.fill(1.0)
+        
+        # 重置控制器相关变量
+        self.controller_vel.fill(0)
+        self.controller_force.fill(0)
+        self.controller_interp_vel.fill(0)
+        self.controller_rho.fill(1.0)
+        
+        # 重置控制器位置到初始状态
+        self.controller_pos.from_numpy(self.controller_obj.column_create())
+        
+        return None
 
 
 

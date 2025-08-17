@@ -40,7 +40,7 @@ class LBMOutputProcessor:
     def calculate_vorticity(self, vorticity: ti.template()):
         """计算涡度场"""
         for i, j in ti.ndrange(self.nx, self.ny):
-            # 边界处理
+            # 边界处理 - 确保访问相邻点时不会越界
             if i == 0 or i == self.nx - 1 or j == 0 or j == self.ny - 1:
                 vorticity[i, j] = 0.0
             else:
@@ -174,8 +174,10 @@ class LBMOutputProcessor:
         #将naca_points加入valid_points
         valid_points.extend(naca_points)
 
-        #将每个点都转化为整数，去除重复点
+        #将每个点都转化为整数，去除重复点，并确保在边界范围内
         valid_points = [list(map(int, point)) for point in valid_points]
+        # 边界检查：确保所有点都在有效范围内
+        valid_points = [[max(0, min(x, self.nx-1)), max(0, min(y, self.ny-1))] for x, y in valid_points]
         # 将列表转换为元组进行去重，然后再转回列表
         valid_points = [list(point) for point in set(tuple(point) for point in valid_points)]
 
@@ -262,17 +264,26 @@ class LBMOutputProcessor:
         # 准备输出数据
         output_data = []
         for x, y in sampling_points:
-            # 获取速度分量
-            u_val = vel_np[x, y][0]
-            v_val = vel_np[x, y][1]
-            # 获取涡度
-            vort_val = vorticity_np[x, y]
+            # 边界检查，确保索引在有效范围内
+            if 0 <= x < self.nx and 0 <= y < self.ny:
+                # 获取速度分量
+                u_val = vel_np[x, y][0]
+                v_val = vel_np[x, y][1]
+                # 获取涡度
+                vort_val = vorticity_np[x, y]
 
-            output_data.append([
-                x,y,
-                u_val, v_val,   # 速度分量
-                vort_val,       # 涡度
-            ])
+                output_data.append([
+                    x, y,
+                    u_val, v_val,   # 速度分量
+                    vort_val,       # 涡度
+                ])
+            else:
+                # 如果索引越界，使用默认值
+                output_data.append([
+                    x, y,
+                    0.0, 0.0,   # 默认速度分量
+                    0.0,        # 默认涡度
+                ])
         return np.array(output_data) #642 * 5
 
         # # 转换为numpy数组并展平

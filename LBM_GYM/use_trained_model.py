@@ -243,7 +243,8 @@ class ModelEvaluator:
         
         # 动作曲线
         actions = [action[0] for action in episode_data['actions']]
-        axes[0, 1].plot(steps[:-1], actions)  # actions比observations少一个
+        action_steps = range(len(actions))  # actions和rewards数量相同
+        axes[0, 1].plot(action_steps, actions)
         axes[0, 1].set_title('Actions')
         axes[0, 1].set_xlabel('Steps')
         axes[0, 1].set_ylabel('Action Value')
