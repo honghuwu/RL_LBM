@@ -13,8 +13,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-# 导入lbm3模块
-from MyCode.core.lbm3 import lbm_solver
+# # 导入lbm3模块
+# from code.core.lbm3 import lbm_solver
 
 @ti.data_oriented
 class LBMOutputProcessor:

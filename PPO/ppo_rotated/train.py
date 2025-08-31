@@ -2,12 +2,42 @@ import gymnasium as gym
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+import torch
+import gc
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.env_util import make_vec_env
 from gymnasium.wrappers import TimeLimit
 from PPO.ppo_rotated.env import LBMEnv
+
+
+
+# 控制参数
+control_params = {
+    "theta": 20,  # 初始角度
+    "control_range": 10.0,  # 控制角度范围
+    "control_step": 5.0,  # 控制角度步长
+    "steps": 10000,  # 总训练步数
+    
+    # 训练相关参数
+    "max_episode_steps": 200,  # 每个episode的最大步数
+    "learning_rate": 3e-4,  # 学习率
+    "n_steps": 1024,  # 每次更新的步数
+    "batch_size": 32,  # 批次大小
+    "n_epochs": 5,  # 每次更新的轮数
+    "gamma": 0.999,  # 折扣因子
+    "gae_lambda": 0.95,  # GAE lambda
+    "clip_range": 0.2,  # PPO clip range
+    "ent_coef": 0.01,  # 熵系数
+    
+    # 回调函数参数
+    "check_freq": 1000,  # 检查频率
+    "save_freq": 1000,  # 保存频率
+    "eval_freq": 2000,  # 评估频率
+}
+
+
 
 
 
@@ -153,9 +183,9 @@ def main():
     
 
         # 创建环境实例，设置episode最大长度
-        base_env = LBMEnv(config={"max_episode_steps": 200})
+        base_env = LBMEnv(config={"max_episode_steps": control_params["max_episode_steps"]})
 
-        env = TimeLimit(base_env, max_episode_steps=200)  
+        env = TimeLimit(base_env, max_episode_steps=control_params["max_episode_steps"])  
 
 
         # 配置日志记录器
@@ -167,27 +197,27 @@ def main():
             env=env,                     # 使用自定义的LBM环境
             verbose=1,                   # 输出训练信息
             tensorboard_log="./ppo_lbm_tensorboard/",  # Tensorboard 日志目录
-            learning_rate=3e-4,          # 学习率
-            n_steps=1024,                # 每次更新的步数
-            batch_size=32,               # 批次大小
-            n_epochs=5,                  # 每次更新的轮数
-            gamma=0.999,                  # 折扣因子
-            gae_lambda=0.95,             # GAE lambda
-            clip_range=0.2,              # PPO clip range
-            ent_coef=0.01,               # 熵系数
+            learning_rate=control_params["learning_rate"],          # 学习率
+            n_steps=control_params["n_steps"],                # 每次更新的步数
+            batch_size=control_params["batch_size"],               # 批次大小
+            n_epochs=control_params["n_epochs"],                  # 每次更新的轮数
+            gamma=control_params["gamma"],                  # 折扣因子
+            gae_lambda=control_params["gae_lambda"],             # GAE lambda
+            clip_range=control_params["clip_range"],              # PPO clip range
+            ent_coef=control_params["ent_coef"],               # 熵系数
         )
         
         # 设置自定义日志记录器
         model.set_logger(new_logger)
 
         # 创建回调函数
-        progress_callback = ProgressCallback(check_freq=1000, save_freq=1000, verbose=1)
+        progress_callback = ProgressCallback(check_freq=control_params["check_freq"], save_freq=control_params["save_freq"], verbose=1)
         
         eval_callback = EvalCallback(
             env,
             best_model_save_path="./models/best_model/",
             log_path="./models/eval_log/",
-            eval_freq=2000,
+            eval_freq=control_params["eval_freq"],
             deterministic=True,
             render=False,
             verbose=1
@@ -199,7 +229,7 @@ def main():
         print("开始训练...")
 
         model.learn(
-            total_timesteps=10000,      # 总训练步数
+            total_timesteps=control_params["steps"],      # 总训练步数
             callback=callbacks,          # 回调函数列表
             progress_bar=True           # 显示进度条
         )
@@ -210,16 +240,22 @@ def main():
         
     except KeyboardInterrupt:
         print("\n训练被用户中断！")
-        # 程序中断时保存当前模型
-        interrupt_save_path = "./models/interrupted_model"
-        model.save(interrupt_save_path)
-        print(f"中断时模型已保存至: {interrupt_save_path}")
+        # 程序中断时保存当前模型（如果模型已创建）
+        if 'model' in locals():
+            interrupt_save_path = "./models/interrupted_model"
+            model.save(interrupt_save_path)
+            print(f"中断时模型已保存至: {interrupt_save_path}")
+        else:
+            print("模型尚未创建，无法保存")
     except Exception as e:
         print(f"\n训练过程中发生错误: {e}")
-        # 发生异常时也保存模型
-        error_save_path = "./models/error_model"
-        model.save(error_save_path)
-        print(f"异常时模型已保存至: {error_save_path}")
+        # 发生异常时也保存模型（如果模型已创建）
+        if 'model' in locals():
+            error_save_path = "./models/error_model"
+            model.save(error_save_path)
+            print(f"异常时模型已保存至: {error_save_path}")
+        else:
+            print("模型尚未创建，无法保存")
         raise
 
 if __name__ == '__main__':
