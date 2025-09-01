@@ -10,6 +10,30 @@ ti.init(arch = ti.cpu)
 from core.lbm_rotated import lbm_solver
 from tools.show_tools.visualizer import LBMVisualizer
 
+# 控制参数
+control_params = {
+    # LBM 求解器参数
+    "nx": 400,  # 网格宽度
+    "ny": 200,  # 网格高度
+    "Red": 1000,  # 雷诺数
+    "inlet_velocity": 0.1,  # 入口速度
+    "air_c": 100,  # 翼型弦长
+    "air_para": [0, 0, 12.0, -20.0],  # 翼型参数 [m, p, t, alpha]
+    "air_o": [100.0, 100.0],  # 翼型原点位置
+    
+    # 环境控制参数
+    "theta0": 20,  # 初始角度
+    "theta_min": 10.0,  # 最小角度
+    "theta_max": 30.0,  # 最大角度
+    "control_range": 10.0,  # 控制范围
+    "control_step": 10,  # LBM步数/环境步数
+    "reward_angle_penalty": 0.05,  # 角度偏离惩罚系数
+    
+    # 渲染参数
+    "render_interval": 10,  # 渲染间隔
+    "max_episode_steps": 200,  # 每个episode的最大步数
+}
+
 class LBMEnv(gym.Env):
     metadata = {"render_modes": ["human", None], "render_fps": 30}
 
@@ -20,22 +44,23 @@ class LBMEnv(gym.Env):
 
         # 渲染开关（config 中传 render_mode="human" 启用渲染）
         self.render_mode = config.get("render_mode", None)
-        self.render_interval = config.get("render_interval", 10)  # 每隔多少 step 渲染一次
+        self.render_interval = config.get("render_interval", control_params["render_interval"])  # 每隔多少 step 渲染一次
         
         # Episode 长度限制
-        self.max_episode_steps = config.get("max_episode_steps", 200)  # 默认最大200步
+        self.max_episode_steps = config.get("max_episode_steps", control_params["max_episode_steps"])  # 默认最大步数
 
         #角度
-        self.theta = self.theta0 = 20
+        self.theta = self.theta0 = control_params["theta0"]
         # 初始化 LBM 求解器
         self.lbm = lbm_solver(
-            nx=400,
-            ny=200,
-            Red=1000,
-            inlet_velocity=0.1,
-            air_c=100,
-            air_para=[0, 0, 12.0, -self.theta],
-            air_o=[100.0, 100.0]
+            nx=control_params["nx"],
+            ny=control_params["ny"],
+            Red=control_params["Red"],
+            inlet_velocity=control_params["inlet_velocity"],
+            air_c=control_params["air_c"],
+            air_para=[control_params["air_para"][0], control_params["air_para"][1], 
+                      control_params["air_para"][2], -self.theta],
+            air_o=control_params["air_o"]
         )
 
         # 初始化可视化器与 GUI（延迟到第一次渲染时创建）
@@ -44,8 +69,8 @@ class LBMEnv(gym.Env):
 
         # 动作空间
         self.action_space = spaces.Box(
-            low=np.array([-5.0], dtype=np.float32),
-            high=np.array([5.0], dtype=np.float32),
+            low=np.array([-control_params["control_range"]], dtype=np.float32),
+            high=np.array([control_params["control_range"]], dtype=np.float32),
             dtype=np.float32
         )
 
@@ -106,20 +131,20 @@ class LBMEnv(gym.Env):
 
     def step(self, action):
         '''
-        施加动作,对theta进行5度以内的加减,并且上下限是10-30度
+        施加动作,对theta进行控制范围内的加减,并且上下限是theta_min-theta_max度
         '''
-        control_val = float(np.clip(action[0], -10.0, 10.0))
+        control_val = float(np.clip(action[0], -control_params["control_range"], control_params["control_range"]))
 
-        if self.theta + control_val < 10.0 :
-            self.theta = 10.0
-        elif self.theta + control_val > 30.0:
-            self.theta = 30.0
+        if self.theta + control_val < control_params["theta_min"] :
+            self.theta = control_params["theta_min"]
+        elif self.theta + control_val > control_params["theta_max"]:
+            self.theta = control_params["theta_max"]
         else:
             self.theta += control_val
 
         self.lbm.control(self.theta)
 
-        for _ in range(10):
+        for _ in range(control_params["control_step"]):
             self.lbm.step()
 
         obs = self.lbm.output().astype(np.float32)
@@ -132,7 +157,7 @@ class LBMEnv(gym.Env):
         cd = drag_lift[2]
         cl = drag_lift[3]
 
-        reward = cl/cd -0.05 * np.abs(self.theta - self.theta0)
+        reward = cl/cd - control_params["reward_angle_penalty"] * np.abs(self.theta - self.theta0)
 
         self.step_counter += 1
 
@@ -203,11 +228,12 @@ class LBMEnv(gym.Env):
 if __name__ == '__main__':
     env = LBMEnv(config={"render_mode": "human", "render_interval": 1})
     print("测试开始")
+    print(f"控制参数: {control_params}")
     obs, info = env.reset()
     for i in range(100):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
-        print(f"实际渲染间隔: {env.render_interval}", flush=True) 
+        print(f"步数: {i}, 角度: {env.theta:.2f}, 奖励: {reward:.4f}, CD: {info['CD']:.4f}, CL: {info['CL']:.4f}", flush=True) 
         time.sleep(0.05)  # 给 GUI 时间刷新
     env.close()
 

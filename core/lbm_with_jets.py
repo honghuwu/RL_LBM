@@ -1,77 +1,3 @@
-"""
-=============================================================================
-LBM求解器 - 输出处理版本 (lbm4.py)
-=============================================================================
-
-文件描述:
-    基于Taichi的格子玻尔兹曼方法(LBM)流体求解器的输出处理版本。在v3.0基础上
-    集成了输出处理器模块，实现了数据输出的标准化和模块化管理。
-
-主要功能:
-    - D2Q9格子玻尔兹曼方法求解不可压缩流体
-    - 浸没边界法处理复杂几何边界(NACA翼型)
-    - 模块化可视化系统
-    - 标准化输出处理器
-    - Taichi GUI实时可视化
-    - 升阻力系数计算和监控
-    - 数据输出和保存功能
-
-核心算法:
-    1. 优化的LBM碰撞-迁移步骤
-    2. 改进的IBM力计算方法(密度加权)
-    3. 简化的体积力项处理
-    4. 周期性边界条件
-
-技术特点:
-    - 使用Taichi GPU加速计算
-    - 模块化可视化架构(show_tools.LBMVisualizer)
-    - 标准化输出处理器(output_tool.LBMOutputProcessor)
-    - 高性能Taichi GUI显示
-    - 自定义颜色映射
-    - 上下双场布局显示
-    - 数据输出管理
-
-输出处理新特性:
-    - 模块化输出处理器
-    - 标准化数据输出接口
-    - 可配置输出格式
-    - 数据保存和管理
-    - 输出处理器工厂模式
-    - 灵活的输出配置
-
-版本更新内容 (v4.0):
-    - 新增: 输出处理器模块集成
-    - 新增: output_tool.LBMOutputProcessor
-    - 新增: 标准化数据输出接口
-    - 新增: 可配置输出格式
-    - 改进: 数据管理和保存
-    - 优化: 模块化架构设计
-
-依赖模块:
-    - show_tools.LBMVisualizer: 可视化模块
-    - obstacles_generate.naca_genarate: 翼型生成
-    - output_tool.output: 输出处理器
-    - taichi: GPU加速计算框架
-
-版本历史:
-    - v1.0: 基础LBM求解器
-    - v2.0: 浸没边界法集成
-    - v3.0: 模块化可视化
-    - v4.0: 输出处理器集成 (当前版本)
-
-版本信息:
-    - 版本: v4.0 (输出处理版本)
-    - 基于: lbm3.py v3.0
-    - 创建日期: 2024
-    - 可视化: 模块化Taichi GUI
-    - 边界条件: 周期性边界
-    - 架构: 模块化设计 + 输出处理
-    - 输出: 标准化输出处理器
-
-作者: LBM项目组
-=============================================================================
-"""
-
 import sys
 import os
 import numpy as np
@@ -98,7 +24,8 @@ class lbm_solver:
         air_c=None, #弦长
         air_o=None, # 翼型原点
         air_d=0,  # 旋转中心与顶点的距离
-        name='LBM Solver'  # 默认窗口标题,
+        jet_params=None,  # 新增：射流参数
+        name='LBM Solver with Jet'  # 窗口标题
     ):
         self.name = name
         self.nx = nx
@@ -110,7 +37,6 @@ class lbm_solver:
         self.air_c = air_c
 
         # 宏观物理量
-        '''niu的定义需要重新考虑'''
         self.niu = (0.1 * self.air_c) / self.Red
         self.tau = 3.0 * self.niu + 0.5
         self.inv_tau = 1.0 / self.tau
@@ -152,14 +78,71 @@ class lbm_solver:
         self.inlet_velocity = inlet_velocity # 入流速度
         self.cylinder_radius = self.air_c / 2.0  # 使用弦长的一半作为特征长度
 
-
         # IBM 参数
-        # self.ibm_alpha = 1.2 
         self.it = ti.field(dtype=ti.i32, shape=())
         self.it[None] = 0  # 初始化为0
         
         # 输出处理器
         self.output_processor = None
+        
+        # 新增：射流相关初始化
+        self.jet_regions = []  # 射流区域列表
+        self.jet_velocities = []  # 射流速度列表
+        self.jet_active = True  # 射流是否激活
+        
+        # 初始化射流参数
+        if jet_params is not None:
+            self.init_jets(jet_params)
+        else:
+            # 默认射流参数（可根据需要调整）
+            default_jets = [
+                {"position": [120.0, 120.0], "velocity": [0.3, 0.1], "radius": 3},  # 上表面射流
+                {"position": [120.0, 80.0], "velocity": [0.2, -0.1], "radius": 2}  # 下表面射流
+            ]
+            self.init_jets(default_jets)
+
+    # 新增：初始化射流函数
+    def init_jets(self, jet_params):
+        """
+        初始化射流区域和参数
+        
+        jet_params: 射流参数列表，每个元素是一个字典，包含：
+            - position: [x, y] 射流中心位置
+            - velocity: [vx, vy] 射流速度矢量
+            - radius: 射流区域半径
+        """
+        for params in jet_params:
+            pos = ti.Vector(params["position"], dt=ti.f32)
+            vel = ti.Vector(params["velocity"], dt=ti.f32)
+            radius = params["radius"]
+            
+            # 找出射流区域内的所有边界点
+            jet_points = []
+            for k in range(self.num_boundary_pts):
+                dist = tm.distance(self.boundary_pos[k], pos)
+                if dist <= radius:
+                    jet_points.append(k)
+            
+            if jet_points:
+                self.jet_regions.append(jet_points)
+                self.jet_velocities.append(vel)
+                print(f"初始化射流区域: 位置 {pos}, 速度 {vel}, 包含 {len(jet_points)} 个边界点")
+
+    # 新增：应用射流效应
+    @ti.kernel
+    def apply_jet_effect(self):
+        """在射流区域应用额外的动量注入"""
+        if self.jet_active and len(self.jet_regions) > 0:
+            for r in ti.static(range(len(self.jet_regions))):
+                jet_vel = self.jet_velocities[r]
+                for k in ti.static(self.jet_regions[r]):
+                    # 对射流区域的边界点施加额外速度
+                    self.boundary_vel[k] = jet_vel
+                    
+                    # 通过增加边界力来实现射流动量注入
+                    force = 2.0 * (self.boundary_vel[k] - self.interp_vel[k]) / self.dt
+                    self.boundary_force[k] += force
+
     @ti.func
     def f_eq(self, i, j):
         vel_ij = self.vel[i, j]
@@ -182,7 +165,6 @@ class lbm_solver:
         for i, j in self.rho:
             self.f_old[i, j] = self.f_eq(i, j)
             self.f_new[i, j] = self.f_eq(i, j)
-            # self.f_final[i, j] = self.f_eq(i, j)
 
     @ti.func
     def _phi(self, x):
@@ -217,15 +199,14 @@ class lbm_solver:
                         interp_v += self.vel[i, j] * weight
                         num += 1
                         rho += self.rho[i, j]
-            self.boundary_rho[k] = rho / num
+            self.boundary_rho[k] = rho / num if num > 0 else 1.0
             self.interp_vel[k] = interp_v
 
     @ti.kernel
     def calculate_boundary_force(self):
         for k in self.boundary_pos:
             # 使用插值得到的边界点密度
-            rho_k = 1.0  # 默认密度，如果需要更精确可以从周围网格点插值
-            # force = self.ibm_alpha * (self.boundary_vel[k] - self.interp_vel[k]) / self.dt
+            rho_k = self.boundary_rho[k] if self.boundary_rho[k] > 1e-6 else 1.0
             force = 2 * rho_k * (self.boundary_vel[k] - self.interp_vel[k]) / self.dt
             self.boundary_force[k] = force
 
@@ -292,7 +273,6 @@ class lbm_solver:
 
     @ti.kernel
     def update_macro_vars(self):
-
         for i, j in ti.ndrange(self.nx, self.ny):
             # 1. 从分布函数计算密度和动量
             new_rho = 0.0
@@ -326,6 +306,22 @@ class lbm_solver:
             self.rho[self.nx - 1, j] = self.rho[self.nx - 2, j]
             self.f_old[self.nx - 1, j] = self.f_eq(self.nx - 1, j)
 
+    # 新增：更新射流参数的函数
+    def update_jet_parameters(self, jet_index, new_velocity=None, new_active=None):
+        """
+        更新射流参数
+        
+        jet_index: 射流索引
+        new_velocity: 新的射流速度矢量，如果为None则不更新
+        new_active: 射流是否激活，如果为None则不更新
+        """
+        if 0 <= jet_index < len(self.jet_velocities) and new_velocity is not None:
+            self.jet_velocities[jet_index] = ti.Vector(new_velocity, dt=ti.f32)
+            print(f"更新射流 {jet_index} 速度为 {new_velocity}")
+        
+        if new_active is not None:
+            self.jet_active = new_active
+            print(f"射流 {'激活' if new_active else '关闭'}")
 
     @ti.kernel
     def calculate_drag_lift(self) -> tm.vec4:
@@ -354,6 +350,10 @@ class lbm_solver:
     def step(self):
         self.interpolate_velocity()
         self.calculate_boundary_force()
+        
+        # 新增：应用射流效应
+        self.apply_jet_effect()
+        
         self.spread_force() 
         self.update_vel()
         self.collision()
@@ -385,9 +385,10 @@ class lbm_solver:
                 cd = drag_lift_coeffs.z  # 阻力系数
                 cl = drag_lift_coeffs.w  # 升力系数
                 
-                
+                # 新增：输出射流状态信息
+                jet_info = f"射流: {'开启' if self.jet_active else '关闭'}"
                 print(f"迭代步数: {self.it[None]}, 阻力: {drag:.6f}, 升力: {lift:.6f}, "
-                    f"C_D: {cd:.4f}, C_L: {cl:.4f}")
+                      f"C_D: {cd:.4f}, C_L: {cl:.4f}, {jet_info}")
 
     def show(self):
         """使用Taichi GUI显示实时流场可视化 - 上下两列布局"""
@@ -419,8 +420,9 @@ class lbm_solver:
                 cd = drag_lift_coeffs.z  # 阻力系数
                 cl = drag_lift_coeffs.w  # 升力系数
 
+                jet_info = f"射流: {'开启' if self.jet_active else '关闭'}"
                 print(f"步数: {self.it[None]}, 阻力: {drag:.6f}, 升力: {lift:.6f}, "
-                        f"C_D: {cd:.4f}, C_L: {cl:.4f}")
+                      f"C_D: {cd:.4f}, C_L: {cl:.4f}, {jet_info}")
             
             # 更新可视化
             visualizer.update_visualization(self.vel)
@@ -428,8 +430,16 @@ class lbm_solver:
             # 显示组合图像
             gui.set_image(visualizer.get_combined_image())
             
-            # 绘制边界点
+            # 绘制边界点和射流区域
             visualizer.draw_boundary_points(gui, self.boundary_pos)
+            
+            # 新增：绘制射流区域
+            for i, jet_region in enumerate(self.jet_regions):
+                if jet_region and self.jet_active:
+                    # 取射流区域中心作为标记点
+                    center_idx = jet_region[len(jet_region)//2]
+                    pos = self.boundary_pos[center_idx]
+                    gui.circle(pos, color=0x00ff00, radius=5)  # 用绿色圆圈标记射流位置
             
             # 显示信息文本
             drag_lift_coeffs = self.calculate_drag_lift()
@@ -437,6 +447,24 @@ class lbm_solver:
             cl = drag_lift_coeffs.w  # 升力系数
             
             visualizer.draw_info_text(gui, self.it[None], self.Red, cd, cl)
+            
+            # 新增：射流控制交互
+            if gui.get_event(ti.GUI.PRESS):
+                if gui.event.key == ti.GUI.SPACE:
+                    self.jet_active = not self.jet_active
+                    print(f"射流已{'激活' if self.jet_active else '关闭'}")
+                elif gui.event.key == '1':
+                    self.update_jet_parameters(0, new_velocity=[0.4, 0.15])  # 0.5弦长上表面
+                elif gui.event.key == '2':
+                    self.update_jet_parameters(1, new_velocity=[0.4, -0.15])  # 0.5弦长下表面
+                elif gui.event.key == '3':
+                    self.update_jet_parameters(2, new_velocity=[0.35, 0.12])  # 0.65弦长上表面
+                elif gui.event.key == '4':
+                    self.update_jet_parameters(3, new_velocity=[0.35, -0.12])  # 0.65弦长下表面
+                elif gui.event.key == '5':
+                    self.update_jet_parameters(4, new_velocity=[0.3, 0.08])  # 0.8弦长上表面
+                elif gui.event.key == '6':
+                    self.update_jet_parameters(5, new_velocity=[0.3, -0.08])  # 0.8弦长下表面
             
             gui.show()
 
@@ -449,19 +477,27 @@ class lbm_solver:
         # 调用输出处理器的output方法
         return self.output_processor.output()
 
-
-
     def control(self):
-        """
-        控制函数 - 预留的控制接口
-        """
+        """控制函数 - 预留的控制接口"""
         pass
         
 
 
-
-
 if __name__ == '__main__':
+    # 定义射流参数 - 在机翼0.5、0.65、0.8弦长位置
+    air_chord = 100  # 弦长
+    air_origin_x = 100.0  # 机翼原点x坐标
+    air_center_y = 100.0  # 机翼中心y坐标
+    
+    jet_parameters = [
+        {"position": [air_origin_x + 0.5 * air_chord, air_center_y + 10], "velocity": [0.3, 0.1], "radius": 3},   # 0.5弦长位置上表面
+        {"position": [air_origin_x + 0.5 * air_chord, air_center_y - 10], "velocity": [0.3, -0.1], "radius": 3},  # 0.5弦长位置下表面
+        {"position": [air_origin_x + 0.65 * air_chord, air_center_y + 8], "velocity": [0.25, 0.08], "radius": 3},  # 0.65弦长位置上表面
+        {"position": [air_origin_x + 0.65 * air_chord, air_center_y - 8], "velocity": [0.25, -0.08], "radius": 3}, # 0.65弦长位置下表面
+        {"position": [air_origin_x + 0.8 * air_chord, air_center_y + 5], "velocity": [0.2, 0.05], "radius": 3},   # 0.8弦长位置上表面
+        {"position": [air_origin_x + 0.8 * air_chord, air_center_y - 5], "velocity": [0.2, -0.05], "radius": 3}    # 0.8弦长位置下表面
+    ]
+    
     lbm = lbm_solver(
         nx=400,
         ny=200,
@@ -470,7 +506,11 @@ if __name__ == '__main__':
         air_c=100,
         air_para=[0, 0, 12.0, -20.0],
         air_o=[100.0, 100.0],
+        jet_params=jet_parameters  # 传入射流参数
     )
-    #lbm.show()
-    lbm.solver(steps=1000)
-    print(lbm.output())
+    
+    # 运行可视化模式以观察射流效果
+    lbm.show()
+    # 或者运行求解模式
+    # lbm.solver(steps=1000)
+    # print(lbm.output())
